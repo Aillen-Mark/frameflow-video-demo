@@ -1,0 +1,5 @@
+output/
+outputs/
+.playwright-cli/
+node_modules/
+*.log
