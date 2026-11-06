@@ -1,3 +1,4 @@
+import { initApi, apiState, currentEngine, submitApi, downloadApiVideo } from './api-client.js';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const state = { duration: 10, imageUrl: './assets/landscape.svg', imageName: '山湖之间', motion: 'push', used: 0, jobs: [], busy: false, cancel: false, currentUrl: null, ready: false, libraryUrls: [] };
@@ -9,10 +10,10 @@ const templates = {
 let toastTimer;
 function toast(message) { $('#toast').textContent = message; $('#toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 3600); }
 function navigate(view) {
-  if (!['studio','library','project'].includes(view)) view = 'studio';
+  if (!['studio','library','project','api'].includes(view)) view = 'studio';
   $$('.view').forEach(el => el.classList.toggle('active', el.id === `view-${view}`));
   $$('.nav-item').forEach(el => { el.classList.toggle('active', el.dataset.view === view); if (el.dataset.view === view) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
-  $('#breadcrumb-title').textContent = {studio:'创作工作台',library:'我的作品',project:'项目方案'}[view];
+  $('#breadcrumb-title').textContent = {studio:'创作工作台',library:'我的作品',project:'项目方案',api:'API 接入'}[view];
   history.replaceState(null, '', `${location.pathname}${location.search}#${view}`);
   window.scrollTo({top:0,behavior:'instant'});
 }
@@ -52,11 +53,12 @@ function saveJob(job) {
   });
 }
 function updateQuota() {
-  $('#quota-left').textContent = Math.max(0,10-state.used);
-  $('#quota-bar').style.width = `${Math.max(0,10-state.used)*10}%`;
+  const real=currentEngine()!=='demo';const used=real?apiState.used:state.used;
+  $('#quota-left').textContent = Math.max(0,10-used);
+  $('#quota-bar').style.width = `${Math.max(0,10-used)*10}%`;
   $('#library-count').textContent = state.jobs.length;
-  $('#generate').disabled = state.busy || !state.ready || state.used >= 10;
-  $('#generate>span').textContent = state.busy ? '正在制作预览…' : state.used >= 10 ? '演示额度已用完' : '生成动态预览';
+  $('#generate').disabled = state.busy || (real ? !apiState.ready : !state.ready) || used >= 10;
+  $('#generate>span').textContent = state.busy ? (real?'API 任务处理中…':'正在制作预览…') : used >= 10 ? '额度已用完' : real?'提交到 API':'生成动态预览';
 }
 function downloadBlob(blob,name) {
   const url = URL.createObjectURL(blob);
@@ -161,6 +163,10 @@ async function recordPreview(img,duration,aspect,motion) {
 }
 $('#generation-form').addEventListener('submit',async e=>{
   e.preventDefault();if(state.busy || !state.ready)return;
+  if(currentEngine()!=='demo'){
+    if(!$('#prompt').value.trim()){toast('请先写下画面描述');return;}
+    await submitApi({imageUrl:state.imageUrl,title:state.imageName,prompt:$('#prompt').value.trim(),duration:state.duration,aspect:$('#aspect').value});return;
+  }
   if(state.used>=10){toast('演示额度已用完，可在我的作品中重置');return;}
   const prompt=$('#prompt').value.trim();if(!prompt){toast('请先写下画面描述');$('#prompt').focus();return;}
   state.busy=true;state.cancel=false;$('#generation-inputs').disabled=true;updateQuota();clearOutput();
@@ -181,7 +187,7 @@ $('#generation-form').addEventListener('submit',async e=>{
 });
 $('#cancel-generation').onclick=()=>{state.cancel=true;};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state.busy)state.cancel=true;});
-$('#download-current').onclick=()=>{if(state.currentJob)downloadBlob(state.currentJob.blob,`映序_${state.currentJob.id}.${state.currentJob.extension}`);};
+$('#download-current').onclick=async()=>{if(state.currentJob?.remote){$('#download-current').disabled=true;await downloadApiVideo(state.currentJob);$('#download-current').disabled=false;}else if(state.currentJob)downloadBlob(state.currentJob.blob,`映序_${state.currentJob.id}.${state.currentJob.extension}`);};
 
 $$('.close-dialog').forEach(button=>button.onclick=()=>button.closest('dialog').close());
 $$('dialog').forEach(dialog=>dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}}));
@@ -211,4 +217,9 @@ $$('.budget-fields input,.budget-fields select').forEach(input=>input.addEventLi
 $('#export-budget').onclick=()=>{const b=latestBudget;const text=`映序 · 图生视频项目预算测算\n本文件为场景测算，非正式报价。\n\n参与人数：${b.people}\n每人最多生成：${b.times} 次\n单条时长：${b.duration} 秒\n模型：${$('#budget-model').selectedOptions[0].textContent}\n官方参考单价：${b.model} 元/秒\n模型费用：${money(b.api)}\n预留比例：${b.buffer}%（假设，可调整）\n预留费用：${money(b.reserve)}\n开发费：${$('#budget-dev').value===''?'待报价':money(b.dev)}\n部署与存储：${$('#budget-infra').value===''?'待报价':money(b.infra)}\n已知项目小计：${money(b.total)}\n\n${$('#budget-warning').textContent}\n基础用量：人数 × 每人次数 × 时长。预算预留不会自动增加每人可用次数。\n成功计费、接口单价、模型能力与并发配额以实际选定接口为准。\n官方来源（2026-11-06 查阅）：\nhttps://docs.volcengine.com/docs/jimeng-ai/jimeng-ai-video-generation-billing-instructions?lang=zh\n`;downloadBlob(new Blob(['\ufeff',text],{type:'text/plain;charset=utf-8'}),'映序_活动预算测算.txt');toast('预算测算明细已导出');};
 updateQuota();
 try {db=await openDatabase();await loadSaved();state.ready=true;updateQuota();}catch(error){$('#preview-status').textContent='本地存储未开启，生成暂不可用';toast(error.message || '请开启浏览器本地存储后刷新页面');}
+await initApi({toast,navigate,downloadBlob,updateQuota,clearOutput,isBusy:()=>state.busy,
+  setBusy(value){state.busy=value;$('#generation-inputs').disabled=value;updateQuota();},
+  async prepareImage(url){const img=await loadImage(url);if(img.naturalWidth<300||img.naturalHeight<300||img.naturalWidth/img.naturalHeight<.4||img.naturalWidth/img.naturalHeight>2.5)throw new Error('API 图片宽高至少 300 像素，宽高比需介于 0.4–2.5');const canvas=document.createElement('canvas');const scale=Math.min(1,2048/Math.max(img.naturalWidth,img.naturalHeight));canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);const ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.93);},
+  showResult(task){clearOutput();state.currentJob={...task,remote:true};$('#result-video').src=task.videoUrl;$('#result-video').removeAttribute('poster');$('#result-video').hidden=false;$('#hero-image').hidden=true;$('#preview-stage').classList.add('has-result');$('#download-current').disabled=false;$('#preview-tag').textContent='AI 生成完成';$('#preview-status').textContent=`${task.provider} · ${task.duration} 秒 · 请及时下载`;} 
+});
 window.addEventListener('beforeunload',()=>{state.libraryUrls.forEach(url=>URL.revokeObjectURL(url));if(state.currentUrl)URL.revokeObjectURL(state.currentUrl);});

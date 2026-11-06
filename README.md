@@ -1,28 +1,38 @@
-# 映序 · Frameflow
+# 映序 · Frameflow API 接入版
 
-会议需求对应的可运行图生视频交互原型，采用原生 HTML/CSS/JavaScript，无运行时 npm 依赖。
+原生 HTML/CSS/JavaScript 工作台，使用 Sites Vinext + Cloudflare D1 承载视频 API 配置与任务。
+
+打开网站 `/#api`，选择火山方舟、可灵或第三方 JSON 接口，填写模型与密钥，保存并测试连接。回到工作台选择生成服务，再提交图片。详见 [API 接入说明](public/API接入说明.md)。
+
+支持方舟 Bearer；可灵 Bearer 或 AK/SK JWT（v1 image2video 协议）；第三方 JSON 模板、字段映射和自定义鉴权头。包含 JSON 导入/导出、加密保存、账号隔离、重复提交去重、进度查询、未确认任务关联及下载。
 
 ## 本地启动
 
+当前工作区依赖、加密密钥和本地数据库已准备好：
+
 ```powershell
 Set-Location 'E:\codex\projects\frameflow-video-demo'
-node server.mjs
+npm run local
 ```
 
-打开 http://127.0.0.1:4173 。H5 简化布局：`http://127.0.0.1:4173/?embed=1`。
+访问 `http://127.0.0.1:4173/signin-with-chatgpt?return_to=%2F%23api` 使用 Sites 本地身份；线上身份由 Sites 提供。
 
-执行 `npm run check` 验证 JavaScript 语法。
+新环境需 Node.js >= 22.13.0，执行 `npm run install:ci`，在未跟踪的 `.dev.vars` 设置至少 32 字符的随机 `VIDEO_CONFIG_KEY`，然后构建并对空的本地数据库执行一次迁移：
 
-## 交付范围
+```powershell
+npm run build
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_bent_vargas.sql
+npm run local
+```
 
-- 图片选择、拖放、格式/大小校验，示例原创 SVG 山湖插画。
-- 提示词、三种运镜、模板对话、5/10 秒、16:9/9:16/1:1。
-- Canvas + MediaRecorder 制作真实可播放的图片运镜短片；生成期间保持页面在前台。优先 WebM，支持时可降级 MP4。
-- IndexedDB 保存作品与 Blob、事务结算 10 次演示额度、取消不扣除、可重置。
-- 项目架构、验收和预算计算，官方计费链接与下载说明。
+已有加密数据后不要随意更换 `VIDEO_CONFIG_KEY`。线上通过 Sites secret 配置该值。本地 `.dev.vars` 和数据库不提交。
 
-真实模型推理、认证、服务器限额、任务队列和 100 并发验收未实现。本地模板助手不会调用大模型。视频标记 DEMO。
+## 文件与验证
 
-静态部署入口：`dist/index.html`。项目方案：`dist/项目方案.md`。所有用户图片与演示视频留在浏览器 IndexedDB，源码部署不包含用户输入。Google Fonts 只用于字体，失败时使用系统回退字体。
+- `ui/index.html`、`public/`：前端；`server/`：供应商适配、凭据和任务服务。
+- `app/api/[...path]/route.ts`：同源接口；`db/schema.ts`、`drizzle/`：数据库迁移。
+- `npm run check`：语法；`npm test`：服务端固定响应测试；`npm run build`：Worker 部署产物。
 
-生产版需增加服务端模型适配与队列，保持密钥在服务端，详见项目方案。服务品牌是封装名称，不表示自研基础模型。
+保留免费本地运镜演示。API 模式使用你填写的供应商账户，实际模型权限、费用和生成效果需有效凭据验收；当前测试未调用收费生成接口。第三方支持 POST JSON + GET 异步查询，不覆盖任意专有协议。
+
+未完成赛事名单登录、活动总金额限额、100 人调度队列、长期对象存储和正式负载验收。部署包不含本地数据库、浏览器作品或供应商密钥。

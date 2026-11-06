@@ -1,0 +1,19 @@
+{
+  "provider": "custom",
+  "name": "我的视频服务",
+  "baseUrl": "https://YOUR_PROVIDER_HOST",
+  "model": "YOUR_MODEL_ID",
+  "auth": "bearer",
+  "createPath": "/v1/videos",
+  "statusPath": "/v1/videos/{id}",
+  "testPath": "/v1/models",
+  "bodyTemplate": {"model":"{{model}}","prompt":"{{prompt}}","image":"{{image}}","duration":"{{duration}}","aspect_ratio":"{{aspect}}"},
+  "idField": "id",
+  "statusField": "status",
+  "videoField": "video_url",
+  "errorField": "error.message",
+  "successValues": "succeeded,completed,success",
+  "failureValues": "failed,error,cancelled",
+  "authHeader": "Authorization",
+  "authPrefix": "Bearer "
+}
